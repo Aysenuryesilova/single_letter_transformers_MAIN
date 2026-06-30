@@ -5,13 +5,15 @@ to read top to bottom and train on a laptop CPU in under a minute. Every model l
 the same toy task — **generate Turkish first names one letter at a time** — so you can
 compare architectures directly instead of getting lost in scale.
 
-Three architectures, same task, side by side:
+Three language-model architectures, same task, side by side — plus a fourth
+folder that is a different beast entirely (a four-model audio pipeline):
 
 | Folder                 | Architecture       | What makes it different                                                                               |
 | ---------------------- | ------------------ | ----------------------------------------------------------------------------------------------------- |
 | [`qwen3/`](qwen3/)     | **Qwen3 dense**    | The clean modern baseline: RMSNorm, QK-Norm, GQA, RoPE, SwiGLU, pre-norm                              |
 | [`qwen3_5/`](qwen3_5/) | **Qwen3.5 hybrid** | Adds **Gated DeltaNet** linear-attention layers, interleaved with full attention                      |
 | [`gemma4/`](gemma4/)   | **Gemma**          | **Sandwich norm**, local/global **sliding-window** attention, dual RoPE, **GeGLU**, embedding scaling |
+| [`acestep/`](acestep/) | **ACE-Step v1.5**  | Not an LM: a **planner LM + FSQ bridge + diffusion DiT + VAE** that turn a letter into a **waveform**  |
 
 > The goal is _clarity_, not fidelity. Each folder implements the architecture's
 > signature ideas in the simplest correct form; large-scale tricks (MoE, MatFormer,
@@ -46,6 +48,10 @@ python3 train.py        # trains ~3000 steps, prints loss, samples names, saves 
 python3 generate.py 20      # generate 20 names
 python3 generate.py 20 0.7  # lower temperature = safer / more common names
 ```
+
+> [`acestep/`](acestep/) is the exception: same `train.py` entry point (it trains four
+> stages in series, ~80s on CPU), but `python3 generate.py a` takes a **letter** and writes
+> `out.wav` instead of printing names. See its own README for the four-region walkthrough.
 
 > This project uses **pyenv**, pinned to **Python 3.13.3** via [`.python-version`](.python-version)
 > (run `pyenv install 3.13.3` once if needed). The old `.venv/` is not used.
@@ -116,11 +122,11 @@ for row in out.tolist():
 
 Checkpoint paths and model classes per folder:
 
-| Folder | Model class | Checkpoint |
-|--------|-------------|------------|
-| `qwen3` | `TinyQwen` | `qwen3/tiny_qwen.pt` |
+| Folder    | Model class  | Checkpoint               |
+| --------- | ------------ | ------------------------ |
+| `qwen3`   | `TinyQwen`   | `qwen3/tiny_qwen.pt`     |
 | `qwen3_5` | `TinyQwen35` | `qwen3_5/tiny_qwen35.pt` |
-| `gemma4` | `TinyGemma` | `gemma4/tiny_gemma.pt` |
+| `gemma4`  | `TinyGemma`  | `gemma4/tiny_gemma.pt`   |
 
 ## Results (toy run, CPU)
 
@@ -150,3 +156,13 @@ correction). Only every 4th layer keeps full attention. See
 **5 local sliding-window layers : 1 global layer**, uses a small RoPE base for local layers
 and a large one for global, swaps SwiGLU for **GeGLU**, scales embeddings by
 `sqrt(hidden_size)`, and adds small **per-layer embeddings**. See [`gemma4/`](gemma4/).
+
+**ACE-Step v1.5 (the outlier).** Not a single LM and not the names task — it is a
+**two-brain audio pipeline**, so here each Turkish letter is a *tag* whose "song" is a tiny
+waveform. A low-resolution autoregressive **planner LM** (the reused TinyQwen) writes a coarse
+**5Hz code** blueprint; an **FSQ** bridge turns those discrete codes into a continuous "source
+latent"; a **diffusion DiT** denoises noise → **25Hz latent** in a few **flow-matching** steps
+(self-attention for time coherence + cross-attention onto the tag and skeleton); and a small
+**Oobleck VAE** decodes the latent to a **waveform**. Run `python3 generate.py a` (not a
+count) — it traces the shape through all four regions and writes `out.wav`. See
+[`acestep/`](acestep/).

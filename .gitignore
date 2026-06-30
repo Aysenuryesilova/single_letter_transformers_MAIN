@@ -15,6 +15,7 @@ env/
 
 # Project outputs and artifacts
 *.pt
+*.wav
 temiz_isimler.txt
 
 # Editor and assistant metadata
