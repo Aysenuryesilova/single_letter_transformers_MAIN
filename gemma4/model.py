@@ -21,17 +21,17 @@ from block import TransformerBlock
 from rotary import precompute_cos_sin
 
 
-def build_mask(T: int, window: int | None) -> torch.Tensor:
+def build_mask(T: int, window: int | None, device=None) -> torch.Tensor:
     """Additive float mask [T, T]: 0.0 where attention is allowed, -inf where blocked.
 
     window=None -> causal only.  window=w -> causal AND within the last w tokens.
     """
-    i = torch.arange(T)[:, None]
-    j = torch.arange(T)[None, :]
+    i = torch.arange(T, device=device)[:, None]
+    j = torch.arange(T, device=device)[None, :]
     allowed = j <= i                       # causal: can't look at the future
     if window is not None:
         allowed = allowed & (i - j < window)   # sliding window: only recent tokens
-    mask = torch.zeros(T, T)
+    mask = torch.zeros(T, T, device=device)
     mask.masked_fill_(~allowed, float("-inf"))
     return mask
 
@@ -69,8 +69,8 @@ class TinyGemma(nn.Module):
         ple = self.per_layer_embeddings(idx).view(B, T, self.cfg.num_layers, self.cfg.hidden_size)
 
         # Build the two masks once for this sequence length.
-        local_mask = build_mask(T, self.cfg.sliding_window).to(x.device)
-        global_mask = build_mask(T, None).to(x.device)
+        local_mask = build_mask(T, self.cfg.sliding_window, x.device)
+        global_mask = build_mask(T, None, x.device)
 
         for i, layer in enumerate(self.layers):
             if self.layer_is_global[i]:

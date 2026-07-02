@@ -13,3 +13,7 @@ Signature ingredients:
 - **SwiGLU** MLP, all linears bias-free, tied input/output embeddings
 
 Run: `python3 train.py` then `python3 generate.py 20`.
+
+Bonus: `python3 train_tiny3.py` trains the same recipe squeezed to
+`hidden_size = 3` (one head, `head_dim = 2` — the smallest shape that still runs
+the full Qwen3 recipe) and saves `tiny_qwen3.pt`; the demo notebook loads both.

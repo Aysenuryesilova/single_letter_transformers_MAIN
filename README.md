@@ -5,20 +5,22 @@ to read top to bottom and train on a laptop CPU in under a minute. Every model l
 the same toy task — **generate Turkish first names one letter at a time** — so you can
 compare architectures directly instead of getting lost in scale.
 
-Three language-model architectures, same task, side by side — plus a fourth
+Four language-model architectures, same task, side by side — plus a fifth
 folder that is a different beast entirely (a four-model audio pipeline):
 
-| Folder                 | Architecture       | What makes it different                                                                               |
-| ---------------------- | ------------------ | ----------------------------------------------------------------------------------------------------- |
-| [`qwen3/`](qwen3/)     | **Qwen3 dense**    | The clean modern baseline: RMSNorm, QK-Norm, GQA, RoPE, SwiGLU, pre-norm                              |
-| [`qwen3_5/`](qwen3_5/) | **Qwen3.5 hybrid** | Adds **Gated DeltaNet** linear-attention layers, interleaved with full attention                      |
-| [`gemma4/`](gemma4/)   | **Gemma**          | **Sandwich norm**, local/global **sliding-window** attention, dual RoPE, **GeGLU**, embedding scaling |
-| [`acestep/`](acestep/) | **ACE-Step v1.5**  | Not an LM: a **planner LM + FSQ bridge + diffusion DiT + VAE** that turn a letter into a **waveform**  |
+| Folder                     | Architecture         | What makes it different                                                                               |
+| -------------------------- | -------------------- | ----------------------------------------------------------------------------------------------------- |
+| [`qwen3/`](qwen3/)         | **Qwen3 dense**      | The clean modern baseline: RMSNorm, QK-Norm, GQA, RoPE, SwiGLU, pre-norm                              |
+| [`qwen3_5/`](qwen3_5/)     | **Qwen3.5 hybrid**   | Adds **Gated DeltaNet** linear-attention layers, interleaved with full attention                      |
+| [`gemma4/`](gemma4/)       | **Gemma**            | **Sandwich norm**, local/global **sliding-window** attention, dual RoPE, **GeGLU**, embedding scaling |
+| [`deepseek3/`](deepseek3/) | **DeepSeek-V3 sparse** | **MLA** compressed-KV attention + **MoE** with a shared expert and **aux-loss-free** load balancing |
+| [`acestep/`](acestep/)     | **ACE-Step v1.5**    | Not an LM: a **planner LM + FSQ bridge + diffusion DiT + VAE** that turn a letter into a **waveform** |
 
 > The goal is _clarity_, not fidelity. Each folder implements the architecture's
-> signature ideas in the simplest correct form; large-scale tricks (MoE, MatFormer,
-> chunked-parallel DeltaNet, 256k vocab, etc.) are intentionally left out. See each
-> folder's notes for what is simplified.
+> signature ideas in the simplest correct form; large-scale tricks (MatFormer,
+> chunked-parallel DeltaNet, 256-expert routing, 256k vocab, multi-token
+> prediction, etc.) are intentionally left out. See each folder's notes for what
+> is simplified.
 
 ## Design rules
 
@@ -43,8 +45,8 @@ Regenerate the clean file: `cd data && python3 temizle_isimler.py`
 Each folder works the same way. From inside a model folder:
 
 ```bash
-cd qwen3        # or qwen3_5, or gemma4
-python3 train.py        # trains ~3000 steps, prints loss, samples names, saves a checkpoint
+cd qwen3        # or qwen3_5, gemma4, or deepseek3
+python3 train.py        # trains a few thousand steps, prints loss, samples names, saves a checkpoint
 python3 generate.py 20      # generate 20 names
 python3 generate.py 20 0.7  # lower temperature = safer / more common names
 ```
@@ -62,23 +64,23 @@ Start the notebook from the repo root (`jupyter lab` or `jupyter notebook`). Eac
 folder uses flat imports (`from model import ...`), so add the folder you want to
 `sys.path` first.
 
-> **One architecture per kernel.** All three folders share module names
+> **One architecture per kernel.** All model folders share module names
 > (`model.py`, `config.py`, …). To switch architectures, **restart the kernel** so the
 > right modules get imported.
 
 **Train from a cell** (simplest — just run the script):
 
 ```python
-!cd qwen3 && python train.py      # or qwen3_5, or gemma4
+!cd qwen3 && python train.py      # or qwen3_5, gemma4, or deepseek3
 ```
 
 **Or train inline** (handy for tweaking hyperparameters live):
 
 ```python
 import sys, torch
-sys.path.insert(0, "qwen3")                      # pick ONE: qwen3 / qwen3_5 / gemma4
+sys.path.insert(0, "qwen3")                      # pick ONE: qwen3 / qwen3_5 / gemma4 / deepseek3
 from config import ModelConfig
-from model import TinyQwen                         # TinyQwen35 / TinyGemma in the others
+from model import TinyQwen                         # TinyQwen35 / TinyGemma / TinyDeepSeek in the others
 from tokenizer import CharTokenizer
 
 tok = CharTokenizer.from_file("data/temiz_isimler.txt")
@@ -122,22 +124,24 @@ for row in out.tolist():
 
 Checkpoint paths and model classes per folder:
 
-| Folder    | Model class  | Checkpoint               |
-| --------- | ------------ | ------------------------ |
-| `qwen3`   | `TinyQwen`   | `qwen3/tiny_qwen.pt`     |
-| `qwen3_5` | `TinyQwen35` | `qwen3_5/tiny_qwen35.pt` |
-| `gemma4`  | `TinyGemma`  | `gemma4/tiny_gemma.pt`   |
+| Folder      | Model class    | Checkpoint                 |
+| ----------- | -------------- | -------------------------- |
+| `qwen3`     | `TinyQwen`     | `qwen3/tiny_qwen.pt`       |
+| `qwen3_5`   | `TinyQwen35`   | `qwen3_5/tiny_qwen35.pt`   |
+| `gemma4`    | `TinyGemma`    | `gemma4/tiny_gemma.pt`     |
+| `deepseek3` | `TinyDeepSeek` | `deepseek3/tiny_deepseek.pt` |
 
 ## Results (toy run, CPU)
 
-All three drop from the uniform baseline loss (`ln 30 ≈ 3.40`) to ~0.5 and produce
+All four drop from the uniform baseline loss (`ln 30 ≈ 3.40`) to ~0.5 and produce
 plausible Turkish names:
 
-| Model   | Params | Final loss | Sample names                  |
-| ------- | ------ | ---------- | ----------------------------- |
-| Qwen3   | ~20k   | ~0.45      | nurhan, oktay, nalan, bedriye |
-| Qwen3.5 | ~42k   | ~0.54      | nevin, şebnem, orhan, cemal   |
-| Gemma   | ~63k   | ~0.56      | selda, zeliha, erkan, rabia   |
+| Model       | Params             | Final loss | Sample names                  |
+| ----------- | ------------------ | ---------- | ----------------------------- |
+| Qwen3       | ~20k               | ~0.45      | nurhan, oktay, nalan, bedriye |
+| Qwen3.5     | ~42k               | ~0.54      | nevin, şebnem, orhan, cemal   |
+| Gemma       | ~63k               | ~0.56      | selda, zeliha, erkan, rabia   |
+| DeepSeek-V3 | ~48k (~36k active) | ~0.58      | zafer, habibe, ferman, cömert |
 
 ## The architectures in one paragraph each
 
@@ -157,8 +161,16 @@ correction). Only every 4th layer keeps full attention. See
 and a large one for global, swaps SwiGLU for **GeGLU**, scales embeddings by
 `sqrt(hidden_size)`, and adds small **per-layer embeddings**. See [`gemma4/`](gemma4/).
 
+**DeepSeek-V3 (sparse).** Swaps both halves of the block. Attention becomes
+**MLA**: each token is compressed into a tiny **KV latent** and every head's K/V
+are re-expanded from it (only the latent would ever be cached), with position
+carried by a few **decoupled RoPE** dims. The MLP becomes **MoE**: a sigmoid
+router sends each token to its **top-2** of 4 small experts (plus one always-on
+shared expert), and load is balanced **aux-loss-free** by nudging a per-expert
+selection bias after every step. See [`deepseek3/`](deepseek3/).
+
 **ACE-Step v1.5 (the outlier).** Not a single LM and not the names task — it is a
-**two-brain audio pipeline**, so here each Turkish letter is a *tag* whose "song" is a tiny
+**two-brain audio pipeline**, so here each Turkish letter is a _tag_ whose "song" is a tiny
 waveform. A low-resolution autoregressive **planner LM** (the reused TinyQwen) writes a coarse
 **5Hz code** blueprint; an **FSQ** bridge turns those discrete codes into a continuous "source
 latent"; a **diffusion DiT** denoises noise → **25Hz latent** in a few **flow-matching** steps
