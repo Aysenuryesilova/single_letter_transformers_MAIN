@@ -53,7 +53,7 @@ cfg = ModelConfig(
     num_heads=1,
     num_kv_heads=1,
     head_dim=2,
-    intermediate_size=6,
+    intermediate_size=2,
 )
 model = TinyQwen(cfg).to(device)
 n_params = sum(p.numel() for p in model.parameters())
